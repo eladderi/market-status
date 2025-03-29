@@ -1,0 +1,151 @@
+
+<!DOCTYPE html>
+<html lang="he">
+<head>
+  <meta charset="UTF-8">
+  <title>מגמת שוק הקריפטו</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      direction: rtl;
+      text-align: center;
+      margin-top: 50px;
+      transition: background-color 0.8s;
+    }
+    #status, #market-status, #forecast, #estimate, #trend-duration {
+      font-size: 24px;
+      margin-bottom: 10px;
+    }
+    #timer {
+      font-size: 20px;
+      color: gray;
+    }
+  </style>
+</head>
+<body>
+  <h1>מגמת שוק הקריפטו:</h1>
+  <div id="status">טוען נתונים...</div>
+  <div id="timer"></div>
+  <div id="market-status"></div>
+  <div id="forecast"></div>
+  <div id="trend-duration"></div>
+  <div id="estimate"></div>
+  <audio id="trend-sound" src="https://www.soundjay.com/buttons/sounds/button-29.mp3" preload="auto"></audio>
+
+  <script>
+    let lastPrice = null;
+    let lastTrend = null;
+    let trendStartTime = null;
+
+    function formatDuration(ms) {
+      const minutes = Math.floor(ms / 60000);
+      const hours = Math.floor(minutes / 60);
+      const remMinutes = minutes % 60;
+      return `${hours} שעות ו-${remMinutes} דקות`;
+    }
+
+    async function getBitcoinPrice() {
+      try {
+        const response = await fetch("https://www.bitstamp.net/api/v2/ticker/btcusd/");
+        const data = await response.json();
+        return parseFloat(data.last);
+      } catch {
+        return null;
+      }
+    }
+
+    async function getMarketTrend() {
+      try {
+        const response = await fetch("https://api.allorigins.win/get?url=" + encodeURIComponent("https://api.coingecko.com/api/v3/global"));
+        const wrapped = await response.json();
+        const data = JSON.parse(wrapped.contents);
+        return data.data.market_cap_change_percentage_24h_usd;
+      } catch {
+        return null;
+      }
+    }
+
+    function predictMarketTrend(change) {
+      const div = document.getElementById('forecast');
+      if (change > 0) {
+        div.textContent = 'התחזית: המשך עלייה';
+        div.style.color = 'green';
+      } else if (change < 0) {
+        div.textContent = 'התחזית: המשך ירידה';
+        div.style.color = 'red';
+      } else {
+        div.textContent = 'התחזית: יציבות';
+        div.style.color = 'gray';
+      }
+    }
+
+    function estimateRemainingTime(trend, duration) {
+      const div = document.getElementById('estimate');
+      let avgMinutes = trend === 'down' ? 90 : 60;
+      const remainingMs = avgMinutes * 60000 - duration;
+      if (remainingMs <= 0) {
+        div.textContent = 'המגמה צפויה להסתיים בכל רגע';
+        div.style.color = 'orange';
+      } else {
+        div.textContent = `הערכה: המגמה תימשך עוד ${formatDuration(remainingMs)}`;
+        div.style.color = 'blue';
+      }
+    }
+
+    async function checkTrend() {
+      const currentPrice = await getBitcoinPrice();
+      const marketChange = await getMarketTrend();
+
+      const statusDiv = document.getElementById('status');
+      const timerDiv = document.getElementById('timer');
+      const marketDiv = document.getElementById('market-status');
+      const trendDurDiv = document.getElementById('trend-duration');
+      const sound = document.getElementById('trend-sound');
+      const now = new Date();
+
+      timerDiv.innerHTML = `עודכן לאחרונה: ${now.toLocaleTimeString('he-IL')}<br>`;
+
+      if (marketChange !== null) {
+        marketDiv.textContent = `שינוי שוק כללי ב-24ש׳: ${marketChange.toFixed(2)}%`;
+        predictMarketTrend(marketChange);
+      }
+
+      if (currentPrice === null) {
+        statusDiv.textContent = "שגיאה בטעינת מחיר ביטקוין.";
+        return;
+      }
+
+      let trend = null;
+
+      if (lastPrice !== null) {
+        trend = currentPrice < lastPrice ? 'down' : 'up';
+        statusDiv.textContent = trend === 'down'
+          ? `הביטקוין בירידה (BTC: $${currentPrice})`
+          : `הביטקוין בעלייה / יציב (BTC: $${currentPrice})`;
+
+        statusDiv.style.color = trend === 'down' ? 'red' : 'green';
+        document.body.style.backgroundColor = trend === 'down' ? '#ffe6e6' : '#e6ffe6';
+
+        if (lastTrend && trend !== lastTrend) {
+          trendStartTime = new Date();
+          sound.play();
+        }
+
+        if (trendStartTime) {
+          const duration = now - trendStartTime;
+          trendDurDiv.textContent = `משך מגמה נוכחית: ${formatDuration(duration)}`;
+          estimateRemainingTime(trend, duration);
+        }
+      } else {
+        trendStartTime = new Date();
+      }
+
+      lastPrice = currentPrice;
+      lastTrend = trend;
+    }
+
+    checkTrend();
+    setInterval(checkTrend, 300000); // כל 5 דקות
+  </script>
+</body>
+</html>
